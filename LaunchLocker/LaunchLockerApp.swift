@@ -9,9 +9,11 @@ import SwiftUI
 
 @main
 struct LaunchLockerApp: App {
+    let monitor = LaunchMonitor()
+
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        Settings {
+            EmptyView()
         }
     }
 }
