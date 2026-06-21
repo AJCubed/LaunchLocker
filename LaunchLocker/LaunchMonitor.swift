@@ -9,28 +9,32 @@ import AppKit
 import LocalAuthentication
 
 final class LaunchMonitor {
-    private let protectedApps: Set<String>
+    private var protectedAppIds: Set<String> {
+        LaunchMonitor.loadProtectedAppIds()
+    }
     
     init() {
-        protectedApps = LaunchMonitor.loadProtectedApps()
-        
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(handleLaunch), name: NSWorkspace.didLaunchApplicationNotification, object: nil)
         
         print("Launch monitoring started!")
     }
     
-    class func loadProtectedApps() -> Set<String> {
-        guard let configFile = Bundle.main.url(forResource: "protectedList", withExtension: "txt") else {
-                print("Config not found.")
-                return Set()
-            }
+    deinit {
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+    }
+    
+    class func loadProtectedAppIds() -> Set<String> {
+        let configFile =
+            FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("LaunchLocker/protectedList.txt")
         
         do {
             let fileContents = try String(contentsOf: configFile, encoding: .utf8)
-            print(fileContents)
-            return Set(fileContents.components(separatedBy: .newlines))
+            
+            return Set(fileContents.components(separatedBy: .newlines)
+                .map{$0.trimmingCharacters(in: .whitespacesAndNewlines)}
+                .filter{!$0.isEmpty})
         } catch {
-            print("Unable to load file")
             return Set()
         }
     }
@@ -41,9 +45,8 @@ final class LaunchMonitor {
                 return
             }
         
-        printDetails(app)
-        guard let appName = app.localizedName else {return}
-        guard protectedApps.contains(appName) else {return}
+        guard let bundleId = app.bundleIdentifier else {return}
+        guard protectedAppIds.contains(bundleId) else {return}
         
         authenticate(app)
     }
@@ -65,9 +68,11 @@ final class LaunchMonitor {
                 usleep(1000)
                 kill(pid,SIGTERM)
                  
-                if(!app.isTerminated) {
-                    print("Fallback forceTerminate...")
-                    app.forceTerminate()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    if !app.isTerminated {
+                        print("Fallback forceTerminate...")
+                        app.forceTerminate()
+                    }
                 }
             }
         }
